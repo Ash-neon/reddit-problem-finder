@@ -2,6 +2,8 @@
 
 **AI-Powered User Research Tool - 100% Free, Zero Cost**
 
+🌐 **Live Demo:** https://reddit-problem-finder-production.up.railway.app/
+
 Automatically discover user problems, pain points, and frustrations from Reddit discussions using free AI models.
 
 ## 💰 Zero Cost Architecture
@@ -20,6 +22,10 @@ Automatically discover user problems, pain points, and frustrations from Reddit 
 5. **Beautiful Dashboard** to view results
 
 ## 🚀 Quick Start
+
+### Try It Live
+
+Visit: https://reddit-problem-finder-production.up.railway.app/
 
 ### Installation
 
@@ -106,7 +112,7 @@ GET /health
 ## 🛠️ Tech Stack
 
 - **Backend**: Node.js + Express
-- **Database**: SQLite (better-sqlite3)
+- **Database**: SQL.js (pure JavaScript SQLite)
 - **AI**: OpenRouter free models
 - **Frontend**: Vanilla JavaScript
 - **Styling**: Modern CSS
