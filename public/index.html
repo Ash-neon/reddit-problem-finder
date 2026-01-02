@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reddit Problem Finder - AI-Powered User Research</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #FF4500 0%, #FF8717 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .header {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      margin-bottom: 30px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      color: #FF4500;
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 1.2em;
+    }
+    .badge {
+      display: inline-block;
+      background: #10b981;
+      color: white;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 0.9em;
+      margin-top: 10px;
+    }
+    .search-box {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      margin-bottom: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .input-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 16px;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #FF4500;
+    }
+    .btn {
+      background: linear-gradient(135deg, #FF4500 0%, #FF8717 100%);
+      color: white;
+      border: none;
+      padding: 15px 40px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: transform 0.2s;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 15px;
+      text-align: center;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    .stat-value {
+      font-size: 2em;
+      font-weight: bold;
+      color: #FF4500;
+    }
+    .stat-label {
+      color: #666;
+      margin-top: 5px;
+    }
+    .results {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      display: none;
+    }
+    .results.show {
+      display: block;
+    }
+    .problem-card {
+      background: #f9fafb;
+      border-left: 4px solid #FF4500;
+      padding: 20px;
+      margin-bottom: 15px;
+      border-radius: 10px;
+    }
+    .problem-card.high {
+      border-left-color: #ef4444;
+      background: #fef2f2;
+    }
+    .problem-card.medium {
+      border-left-color: #f59e0b;
+      background: #fffbeb;
+    }
+    .problem-card.low {
+      border-left-color: #10b981;
+      background: #f0fdf4;
+    }
+    .severity-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 0.85em;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .severity-high { background: #fee2e2; color: #991b1b; }
+    .severity-medium { background: #fef3c7; color: #92400e; }
+    .severity-low { background: #d1fae5; color: #065f46; }
+    .problem-text {
+      font-size: 1.1em;
+      margin-bottom: 10px;
+      color: #1f2937;
+    }
+    .problem-context {
+      color: #6b7280;
+      font-size: 0.9em;
+      margin-bottom: 10px;
+    }
+    .problem-link {
+      color: #FF4500;
+      text-decoration: none;
+      font-size: 0.9em;
+    }
+    .problem-link:hover {
+      text-decoration: underline;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .spinner {
+      border: 4px solid #f3f4f6;
+      border-top: 4px solid #FF4500;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔍 Reddit Problem Finder</h1>
+      <p class="subtitle">AI-Powered User Research Tool</p>
+      <span class="badge">💰 100% Free - Zero Cost</span>
+    </div>
+
+    <div class="stats" id="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="totalProblems">0</div>
+        <div class="stat-label">Problems Found</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="totalSearches">0</div>
+        <div class="stat-label">Searches</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">$0.00</div>
+        <div class="stat-label">Total Cost</div>
+      </div>
+    </div>
+
+    <div class="search-box">
+      <div class="input-group">
+        <label>Subreddit (without r/)</label>
+        <input type="text" id="subreddit" placeholder="e.g., entrepreneur, SaaS, webdev" value="entrepreneur">
+      </div>
+      
+      <div class="input-group">
+        <label>Search Query (optional)</label>
+        <input type="text" id="query" placeholder="e.g., frustrating, problem with, need help">
+      </div>
+      
+      <div class="input-group">
+        <label>Number of Posts to Analyze</label>
+        <select id="limit">
+          <option value="10">10 posts</option>
+          <option value="25" selected>25 posts</option>
+          <option value="50">50 posts</option>
+          <option value="100">100 posts</option>
+        </select>
+      </div>
+      
+      <button class="btn" onclick="analyzePosts()">🔍 Find Problems</button>
+    </div>
+
+    <div class="results" id="results">
+      <h2>Problems Discovered</h2>
+      <div id="problemsList"></div>
+    </div>
+  </div>
+
+  <script>
+    async function loadStats() {
+      try {
+        const res = await fetch('/api/stats');
+        const data = await res.json();
+        document.getElementById('totalProblems').textContent = data.total_problems;
+        document.getElementById('totalSearches').textContent = data.total_searches;
+      } catch (error) {
+        console.error('Failed to load stats:', error);
+      }
+    }
+
+    async function analyzePosts() {
+      const subreddit = document.getElementById('subreddit').value.trim();
+      const query = document.getElementById('query').value.trim();
+      const limit = document.getElementById('limit').value;
+      
+      if (!subreddit) {
+        alert('Please enter a subreddit');
+        return;
+      }
+      
+      const resultsDiv = document.getElementById('results');
+      const problemsList = document.getElementById('problemsList');
+      
+      resultsDiv.classList.add('show');
+      problemsList.innerHTML = '<div class="loading"><div class="spinner"></div><p>Analyzing Reddit posts with AI...</p></div>';
+      
+      try {
+        const res = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subreddit, query, limit: parseInt(limit) })
+        });
+        
+        const data = await res.json();
+        
+        if (data.problems.length === 0) {
+          problemsList.innerHTML = '<p style="text-align:center;color:#666;padding:40px;">No problems found. Try a different subreddit or search query.</p>';
+        } else {
+          problemsList.innerHTML = data.problems.map(p => `
+            <div class="problem-card ${p.severity}">
+              <span class="severity-badge severity-${p.severity}">${p.severity.toUpperCase()}</span>
+              <div class="problem-text">${p.problem}</div>
+              <div class="problem-context">${p.context}</div>
+              <a href="${p.post_url}" target="_blank" class="problem-link">View Reddit Post →</a>
+            </div>
+          `).join('');
+        }
+        
+        loadStats();
+        
+      } catch (error) {
+        problemsList.innerHTML = `<p style="text-align:center;color:#ef4444;padding:40px;">Error: ${error.message}</p>`;
+      }
+    }
+    
+    loadStats();
+  </script>
+</body>
+</html>
