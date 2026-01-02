@@ -1,7 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
+const fs = require('fs');
 const path = require('path');
 
 const app = express();
@@ -9,31 +10,54 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Initialize SQLite database (zero cost, file-based)
-const db = new Database('problems.db');
+// Initialize SQL.js database (pure JavaScript, no native dependencies)
+let db;
+const dbPath = path.join(__dirname, 'problems.db');
 
-// Create tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS problems (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    subreddit TEXT,
-    problem TEXT,
-    context TEXT,
-    severity TEXT,
-    post_url TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+async function initDatabase() {
+  const SQL = await initSqlJs();
   
-  CREATE TABLE IF NOT EXISTS searches (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    query TEXT,
-    subreddit TEXT,
-    problems_found INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-`);
+  // Load existing database or create new one
+  if (fs.existsSync(dbPath)) {
+    const buffer = fs.readFileSync(dbPath);
+    db = new SQL.Database(buffer);
+  } else {
+    db = new SQL.Database();
+  }
+  
+  // Create tables
+  db.run(`
+    CREATE TABLE IF NOT EXISTS problems (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subreddit TEXT,
+      problem TEXT,
+      context TEXT,
+      severity TEXT,
+      post_url TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  
+  db.run(`
+    CREATE TABLE IF NOT EXISTS searches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      query TEXT,
+      subreddit TEXT,
+      problems_found INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  
+  saveDatabase();
+}
 
-// Free AI Models via OpenRouter (using free tier models)
+function saveDatabase() {
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  fs.writeFileSync(dbPath, buffer);
+}
+
+// Free AI Models via OpenRouter
 const FREE_AI_MODELS = [
   'google/gemini-2.0-flash-exp:free',
   'meta-llama/llama-3.2-3b-instruct:free',
@@ -64,8 +88,11 @@ If no clear problem exists, set hasProblem to false.`
     }, {
       headers: {
         'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY || 'sk-or-v1-free'}`,
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://github.com/Ash-neon/reddit-problem-finder',
+        'X-Title': 'Reddit Problem Finder'
+      },
+      timeout: 10000
     });
 
     const content = response.data.choices[0].message.content;
@@ -76,7 +103,6 @@ If no clear problem exists, set hasProblem to false.`
     return { hasProblem: false };
   } catch (error) {
     console.error('AI Analysis error:', error.message);
-    // Fallback to keyword-based analysis
     return keywordAnalysis(text);
   }
 }
@@ -85,7 +111,7 @@ function keywordAnalysis(text) {
   const problemKeywords = [
     'problem', 'issue', 'frustrat', 'annoying', 'difficult', 'hard to',
     'wish', 'need', 'want', 'struggling', 'pain', 'hate', 'terrible',
-    'broken', 'doesn\'t work', 'bug', 'error', 'fail'
+    'broken', 'doesn\'t work', 'bug', 'error', 'fail', 'sucks'
   ];
   
   const lowerText = text.toLowerCase();
@@ -103,7 +129,6 @@ function keywordAnalysis(text) {
   return { hasProblem: false };
 }
 
-// Fetch Reddit posts (no API key needed for public data)
 async function fetchRedditPosts(subreddit, query = '', limit = 25) {
   try {
     const searchUrl = query 
@@ -136,14 +161,12 @@ app.post('/api/analyze', async (req, res) => {
       return res.status(400).json({ error: 'Subreddit is required' });
     }
     
-    // Fetch Reddit posts
     const posts = await fetchRedditPosts(subreddit, query, limit);
     
     if (posts.length === 0) {
       return res.json({ problems: [], message: 'No posts found' });
     }
     
-    // Analyze each post
     const problems = [];
     for (const post of posts) {
       const text = `${post.title} ${post.selftext}`.substring(0, 1000);
@@ -158,23 +181,21 @@ app.post('/api/analyze', async (req, res) => {
           post_url: post.url
         };
         
-        // Save to database
-        const stmt = db.prepare(`
-          INSERT INTO problems (subreddit, problem, context, severity, post_url)
-          VALUES (?, ?, ?, ?, ?)
-        `);
-        stmt.run(problem.subreddit, problem.problem, problem.context, problem.severity, problem.post_url);
+        db.run(
+          'INSERT INTO problems (subreddit, problem, context, severity, post_url) VALUES (?, ?, ?, ?, ?)',
+          [problem.subreddit, problem.problem, problem.context, problem.severity, problem.post_url]
+        );
         
         problems.push(problem);
       }
     }
     
-    // Save search record
-    const searchStmt = db.prepare(`
-      INSERT INTO searches (query, subreddit, problems_found)
-      VALUES (?, ?, ?)
-    `);
-    searchStmt.run(query || 'hot posts', subreddit, problems.length);
+    db.run(
+      'INSERT INTO searches (query, subreddit, problems_found) VALUES (?, ?, ?)',
+      [query || 'hot posts', subreddit, problems.length]
+    );
+    
+    saveDatabase();
     
     res.json({
       success: true,
@@ -209,27 +230,41 @@ app.get('/api/problems', (req, res) => {
   params.push(parseInt(limit));
   
   const stmt = db.prepare(query);
-  const problems = stmt.all(...params);
+  stmt.bind(params);
+  
+  const problems = [];
+  while (stmt.step()) {
+    problems.push(stmt.getAsObject());
+  }
+  stmt.free();
   
   res.json({ problems, count: problems.length });
 });
 
 app.get('/api/stats', (req, res) => {
+  const getCount = (query) => {
+    const stmt = db.prepare(query);
+    stmt.step();
+    const result = stmt.getAsObject();
+    stmt.free();
+    return result.count || 0;
+  };
+  
+  const getArray = (query) => {
+    const stmt = db.prepare(query);
+    const results = [];
+    while (stmt.step()) {
+      results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+  };
+  
   const stats = {
-    total_problems: db.prepare('SELECT COUNT(*) as count FROM problems').get().count,
-    total_searches: db.prepare('SELECT COUNT(*) as count FROM searches').get().count,
-    by_severity: db.prepare(`
-      SELECT severity, COUNT(*) as count 
-      FROM problems 
-      GROUP BY severity
-    `).all(),
-    top_subreddits: db.prepare(`
-      SELECT subreddit, COUNT(*) as count 
-      FROM problems 
-      GROUP BY subreddit 
-      ORDER BY count DESC 
-      LIMIT 10
-    `).all()
+    total_problems: getCount('SELECT COUNT(*) as count FROM problems'),
+    total_searches: getCount('SELECT COUNT(*) as count FROM searches'),
+    by_severity: getArray('SELECT severity, COUNT(*) as count FROM problems GROUP BY severity'),
+    top_subreddits: getArray('SELECT subreddit, COUNT(*) as count FROM problems GROUP BY subreddit ORDER BY count DESC LIMIT 10')
   };
   
   res.json(stats);
@@ -238,14 +273,17 @@ app.get('/api/stats', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'operational',
-    database: 'SQLite (file-based)',
+    database: 'SQL.js (pure JavaScript)',
     ai_model: 'Free OpenRouter models',
     cost: '$0.00'
   });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🔍 Reddit Problem Finder running on port ${PORT}`);
-  console.log(`💰 Cost: $0.00 - Using free tier services`);
+
+initDatabase().then(() => {
+  app.listen(PORT, () => {
+    console.log(`🔍 Reddit Problem Finder running on port ${PORT}`);
+    console.log(`💰 Cost: $0.00 - Using free tier services`);
+  });
 });
